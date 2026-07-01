@@ -5,8 +5,10 @@
 #define X 8
 #define Y 10 //2マス余計にとってバッファとする
 
-#define maxBlockX 2
-#define maXBlockY 2
+// #define maxBlockX 2
+// #define maXBlockY 2
+
+#define maxBlockSize 4
 
 //github実験 これはbranch modify0701
 
@@ -14,6 +16,7 @@
           図形の追加
           図形の回転
           嘘ブロック（疑心暗鬼要素）次の嘘ブロックは2ライン消すまで出ないとかにしたらバランスいいかも
+          ゲームオーバー
           */
 
 // 8x8マトリックス用のオブジェクトを作成
@@ -23,10 +26,51 @@ int block[X][Y] = {0};
 int eraseLine[Y] = {0}; //消すラインのYを1にする
 int currentX = 3;
 int currentY = 0;
-int shape0[maxBlockX][maXBlockY] = {{1,1},{1,1}}; //正方形
 int nextFlag = 0; //次のミノを出現させて良いかのフラグ
 int counter = 0; //x座標の移動判定は0.2秒ごとに行われy座標は1秒ごとに行うので5回数えてタイミングが重なるときにそろえる
 unsigned long previousMillis;
+// int shape0[maxBlockX][maXBlockY] = {{1,1},{1,1}}; //正方形
+
+/*図形の定義*/
+int currentShapeType;
+
+struct BlockShape{
+  int size; //図形の実際の大きさ 例：Oミノなら2*2で定義できるので2,Tミノには最低2*3必要なので3*3必要として3を入れとく
+  int shape[maxBlockSize][maxBlockSize]
+}
+
+BlockShape shapes[3] = {
+  //Oミノ
+  {
+    2,
+    {
+      {1,1,0,0},
+      {1,1,0,0},
+      {0,0,0,0},
+      {0,0,0,0}
+    }
+  },
+  //Tミノ
+  {
+    3,
+    {
+      {0,1,0,0},
+      {1,1,1,0},
+      {0,0,0,0},
+      {0,0,0,0}
+    }
+  },
+  //Iミノ
+  {
+    4,
+    {
+      {0,0,0,0},
+      {1,1,1,1},
+      {0,0,0,0},
+      {0,0,0,0}
+    }
+  }
+};
 
 void setup() {
   // HT16K33のI2Cアドレスを指定して通信開始（デフォルトは 0x70 です）
@@ -36,6 +80,8 @@ void setup() {
   matrix.setBrightness(5);
 
   previousMillis = millis();
+
+  currentShapeType = random(3); //最初のブロック決定
 }
 
 void loop() {
@@ -96,9 +142,9 @@ void drawCurrentBlock(int mode){  //mode=1:draw mode=0:erase
   int x = 0;
   int y = 0;
   
-  for(x = 0; x < maxBlockX; x++){
-    for(y = 0; y < maXBlockY; y++){ 
-      if(shape0[x][y] == 1){
+  for(x = 0; x < shapes[currentShapeType].size; x++){
+    for(y = 0; y < shapes[currentShapeType].size; y++){ 
+      if(shapes[currentShapeType].shape[x][y] == 1){
         if((currentX + x < X) && (currentY + y < Y)){
           block[currentX + x][currentY + y] = mode;
         }
@@ -121,9 +167,9 @@ int moveCurrentBlockX(int moveX){
   int y = 0;
   int moveAbleFlagX = 1; // =1:moveOK  =0:moveNOK
 
-  for(x = 0; x < maxBlockX; x++){
-    for(y = 0; y < maXBlockY; y++){
-      if(shape0[x][y] == 1){
+  for(x = 0; x < shapes[currentShapeType].size; x++){
+    for(y = 0; y < shapes[currentShapeType].size; y++){
+      if(shapes[currentShapeType].shape[x][y] == 1){
         if(currentX + x + moveX < 0 || currentX + x + moveX > X - 1 || block[currentX + x + moveX][currentY + y] == 1){ //x方向にはみ出すかブロックに接地したらフラグを降ろす
           moveAbleFlagX = 0;
         }
@@ -144,9 +190,9 @@ void moveCurrentBlockY(int moveAbleFlagX, int moveX){
   int y = 0;
   int moveAbleFlagY = 1; // =1:moveOK  =0:moveNOK
 
-  for(x = 0; x < maxBlockX; x++){
-    for(y = 0; y < maXBlockY; y++){
-      if(shape0[x][y] == 1){
+  for(x = 0; x < shapes[currentShapeType].size; x++){
+    for(y = 0; y < shapes[currentShapeType].size; y++){
+      if(shapes[currentShapeType].shape[x][y] == 1){
         if(currentY + y + 1 > Y - 1){ //y方向にはみ出したらフラグを降ろす y座標の+1は変位
           moveAbleFlagY = 0;
         }else if(block[currentX + x][currentY + y + 1] == 1){ //y方向にブロックがある場合
@@ -165,6 +211,8 @@ void moveCurrentBlockY(int moveAbleFlagX, int moveX){
 
 /*中央上に新しいブロックを生成する*/
 void newBlock(){
+  currentShapeType = random(3);
+
   currentX = 3;
   currentY = 0;
 }

@@ -8,6 +8,8 @@
 #define maxBlockX 2
 #define maXBlockY 2
 
+//github実験 これはbranch modify0701
+
 /*todo :  既にあるブロックの角を通る時その角が消えるバグの修正
           図形の追加
           図形の回転

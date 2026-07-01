@@ -47,9 +47,9 @@ void loop() {
   
   drawCurrentBlock(0);
   
-  if(currentMillis - previousMillis >= 200){
+  if(currentMillis - previousMillis >= 200){ //200msに一回x方向に1マス動かせる
     counter += 1;
-    if(counter > 4){
+    if(counter > 4){  //1秒に一回y方向に1マス落ちる
       counter = 0;
       moveCurrentBlock(moveX, 1); //y方向にも動かす
     }else{
@@ -107,7 +107,7 @@ void drawCurrentBlock(int mode){  //mode=1:draw mode=0:erase
   }
 }
 
-/*現在動いているブロックを動かす 底辺かブロックに接地すると止まる*/
+/*現在動いているブロックを動かす 底辺かブロックにy座標が接地すると止まる*/
 void moveCurrentBlock(int moveX, int timeFlagY){ //moveX:x方向の動き timeFlagY:y方向に動かすかどうか
   if(timeFlagY == 0){ //x方向にのみ動かすとき
     moveCurrentBlockX(moveX);
@@ -149,9 +149,7 @@ void moveCurrentBlockY(int moveAbleFlagX, int moveX){
       if(shape0[x][y] == 1){
         if(currentY + y + 1 > Y - 1){ //y方向にはみ出したらフラグを降ろす y座標の+1は変位
           moveAbleFlagY = 0;
-        }else if(moveAbleFlagX == 1 && block[currentX + x + moveX][currentY + y + 1] == 1){ //x方向に移動可能な状態で他のブロックに接地したらフラグを降ろす
-          moveAbleFlagY = 0;
-        }else if(moveAbleFlagX == 0 && block[currentX + x][currentY + y + 1] == 1){ //x方向に移動不可な状態で他のブロックに接地したらフラグを降ろす
+        }else if(block[currentX + x][currentY + y + 1] == 1){ //y方向にブロックがある場合
           moveAbleFlagY = 0;
         }
       }
@@ -224,6 +222,10 @@ void updateBlock(){
         }
       }
     }
+  }
+
+  for(int i = 0; i < X; i++){ //一番上の行を掃除して終わる
+    block[i][0] = 0;
   }
 }
 

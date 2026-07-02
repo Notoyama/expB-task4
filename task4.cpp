@@ -13,9 +13,10 @@
 //github実験 これはbranch modify0701
 
 /*todo :  既にあるブロックの角を通る時その角が消えるバグの修正 maybe ok
-          図形の追加  maybe ok
-          ゲームオーバー maybe ok
-          図形の回転  
+          図形の追加  ok
+          ゲームオーバー ok
+          図形の回転  maybeok
+          表示を増やす2個使いたい
           嘘ブロック（疑心暗鬼要素）次の嘘ブロックは2ライン消すまで出ないとかにしたらバランスいいかも
           */
 
@@ -23,15 +24,18 @@
 Adafruit_8x8matrix matrix = Adafruit_8x8matrix();
 
 int block[X][Y] = {0};
+int blockBag[7] = {0, 1, 2, 3, 4, 5, 6}; // 7種類のブロックが入った袋
+int bagIndex = 7; // 袋の何番目を取り出すか 最初は空っぽ扱いにするため7
 int eraseLine[Y] = {0}; //消すラインのYを1にする
 int currentX = 3;
 int currentY = 0;
 int nextFlag = 0; //次のミノを出現させて良いかのフラグ
-int counter = 0; //x座標の移動判定は0.2秒ごとに行われy座標は1秒ごとに行うので5回数えてタイミングが重なるときにそろえる
+int counter = 0; //x座標の移動判定は0.2秒ごとに行われy座標は1秒ごとに行うので数えてタイミングが重なるときにそろえる
 unsigned long previousMillis;
-// int shape0[maxBlockX][maXBlockY] = {{1,1},{1,1}}; //正方形
+
 
 /*図形の定義*/
+int currentShape[maxBlockSize][maxBlockSize] = {0}; //現在操作しているブロック
 int currentShapeType;
 
 struct BlockShape{
@@ -39,13 +43,23 @@ struct BlockShape{
   int shape[maxBlockSize][maxBlockSize];
 };
 
-BlockShape shapes[3] = {
+BlockShape shapes[7] = {
   //Oミノ
   {
     2,
     {
       {1,1,0,0},
       {1,1,0,0},
+      {0,0,0,0},
+      {0,0,0,0}
+    }
+  },
+  //Iミノ
+  {
+    4,
+    {
+      {0,0,0,0},
+      {1,1,1,1},
       {0,0,0,0},
       {0,0,0,0}
     }
@@ -60,56 +74,46 @@ BlockShape shapes[3] = {
       {0,0,0,0}
     }
   },
-  //Iミノ
+  //Sミノ
   {
-    4,
+    3,
     {
-      {0,0,0,0},
-      {1,1,1,1},
+      {0,1,1,0},
+      {1,1,0,0},
       {0,0,0,0},
       {0,0,0,0}
     }
-  }//, ここのコンマもコメント外す
-  // //Sミノ
-  // {
-  //   3,
-  //   {
-  //     {0,1,1,0},
-  //     {1,1,0,0},
-  //     {0,0,0,0},
-  //     {0,0,0,0}
-  //   }
-  // },
-  // //Zミノ
-  // {
-  //   3,
-  //   {
-  //     {1,1,0,0},
-  //     {0,1,1,0},
-  //     {0,0,0,0},
-  //     {0,0,0,0}
-  //   }
-  // },
-  // //Lミノ
-  // {
-  //   3,
-  //   {
-  //     {1,0,0,0},
-  //     {1,0,0,0},
-  //     {1,1,0,0},
-  //     {0,0,0,0}
-  //   }
-  // },
-  // //Jミノ
-  // {
-  //   3,
-  //   {
-  //     {0,1,0,0},
-  //     {0,1,0,0},
-  //     {1,1,0,0},
-  //     {0,0,0,0},
-  //   }
-  // }
+  },
+  //Zミノ
+  {
+    3,
+    {
+      {1,1,0,0},
+      {0,1,1,0},
+      {0,0,0,0},
+      {0,0,0,0}
+    }
+  },
+  //Lミノ
+  {
+    3,
+    {
+      {1,0,0,0},
+      {1,0,0,0},
+      {1,1,0,0},
+      {0,0,0,0}
+    }
+  },
+  //Jミノ
+  {
+    3,
+    {
+      {0,1,0,0},
+      {0,1,0,0},
+      {1,1,0,0},
+      {0,0,0,0},
+    }
+  }
 };
 
 void setup() {
@@ -121,7 +125,9 @@ void setup() {
 
   previousMillis = millis();
 
-  currentShapeType = random(3); //最初のブロック決定
+  randomSeed(analogRead(A3)); //使ってないアナログピンのノイズを利用して毎回ランダム値を変化させるらしい
+
+  newBlock(); //最初のブロック生成
 }
 
 void loop() {
@@ -130,16 +136,23 @@ void loop() {
   unsigned long currentMillis = millis();
 
   moveX = wayOfMove(stickX);
+  moveY = wayOfMove(stickY);
   
   drawCurrentBlock(0);
   
-  if(currentMillis - previousMillis >= 200){ //200msに一回x方向に1マス動かせる
+  if(currentMillis - previousMillis >= 100){
     counter += 1;
-    if(counter > 4){  //1秒に一回y方向に1マス落ちる
+    if(counter > 10){  //1秒に一回y方向に1マス落ちる
       counter = 0;
       moveCurrentBlock(moveX, 1); //y方向にも動かす
-    }else{
+    }else if(counter % 2 == 0){ //200msに一回x方向に1マス動かせる
       moveCurrentBlock(moveX, 0); //x方向にのみ動かす
+    }
+
+    if(moveY == 1){ //100msに1回回転できる
+      drawCurrentBlock(0);
+      rotateBlock();  //回転
+      drawCurrentBlock(1);
     }
     previousMillis = currentMillis;
   }
@@ -185,7 +198,7 @@ void drawCurrentBlock(int mode){  //mode=1:draw mode=0:erase
   
   for(x = 0; x < shapes[currentShapeType].size; x++){
     for(y = 0; y < shapes[currentShapeType].size; y++){ 
-      if(shapes[currentShapeType].shape[x][y] == 1){
+      if(currentShape[x][y] == 1){
         if((currentX + x < X) && (currentY + y < Y)){
           block[currentX + x][currentY + y] = mode;
         }
@@ -210,7 +223,7 @@ int moveCurrentBlockX(int moveX){
 
   for(x = 0; x < shapes[currentShapeType].size; x++){
     for(y = 0; y < shapes[currentShapeType].size; y++){
-      if(shapes[currentShapeType].shape[x][y] == 1){
+      if(currentShape[x][y] == 1){
         if(currentX + x + moveX < 0 || currentX + x + moveX > X - 1 || block[currentX + x + moveX][currentY + y] == 1){ //x方向にはみ出すかブロックに接地したらフラグを降ろす
           moveAbleFlagX = 0;
         }
@@ -233,7 +246,7 @@ void moveCurrentBlockY(int moveAbleFlagX, int moveX){
 
   for(x = 0; x < shapes[currentShapeType].size; x++){
     for(y = 0; y < shapes[currentShapeType].size; y++){
-      if(shapes[currentShapeType].shape[x][y] == 1){
+      if(currentShape[x][y] == 1){
         if(currentY + y + 1 > Y - 1){ //y方向にはみ出したらフラグを降ろす y座標の+1は変位
           moveAbleFlagY = 0;
         }else if(block[currentX + x][currentY + y + 1] == 1){ //y方向にブロックがある場合
@@ -252,20 +265,81 @@ void moveCurrentBlockY(int moveAbleFlagX, int moveX){
 
 /*中央上に新しいブロックを生成する*/
 void newBlock(){
-  currentShapeType = random(3);
+  if(bagIndex >= 7){
+    for(int i = 0; i < 7; i++){ // ランダムな場所を選んで中身を入れ替えるのを7回やる
+      int r = random(7);
+      int temp = blockBag[i];
+      blockBag[i] = blockBag[r];
+      blockBag[r] = temp;
+    }
+    bagIndex = 0; // 0に戻す
+  }
+
+  currentShapeType = blockBag[bagIndex];
+  bagIndex++; // 次はblockBagの次のブロックを取り出す
+
+  for(int x = 0; x < maxBlockSize; x++){
+    for(int y = 0; y < maxBlockSize; y++){
+      currentShape[x][y] = shapes[currentShapeType].shape[x][y];  //図形の形をもらってくる
+    }
+  }
 
   currentX = 3;
   currentY = 0;
 }
 
 /*左右どちらに動かすか決定する*/
-int wayOfMove(int stickX){
-  if(stickX < 300){
+int wayOfMove(int stick){
+  if(stick < 300){
     return -1;
-  }else if(stickX > 724){
+  }else if(stick > 724){
     return 1;
   }else{
     return 0;
+  }
+}
+
+//ブロックの回転を行う
+void rotateBlock(){
+  int temp[maxBlockSize][maxBlockSize] = {0};
+  int blockSize;
+  int rotateAbleFlag = 1; // =1:rotakeOK, =0:rotateNOK
+
+  if(currentShapeType == 0){  //Oミノのとき 回転の必要なくね
+    blockSize = 2;
+  }else if(currentShapeType == 1){ //Iミノのとき
+    blockSize = 4;
+  }else{
+    blockSize = 3;
+  }
+
+  for(int x = 0; x < blockSize; x++){
+    for(int y = 0; y < blockSize; y++){
+      temp[x][y] = currentShape[y][blockSize - 1 -x]; //90度回転
+    }
+  }
+
+  //回転後空間に空きがあるか確かめる
+  for(int x = 0; x < blockSize; x++){
+    for(int y = 0; y < blockSize; y++){
+      if(temp[x][y] == 1){
+        if(block[currentX + x][currentY + y] == 1 || currentX + x < 0 || currentX + x >= X || currentY + y < 0 || currentY + y >= Y){  //回転した先にすでにブロックがあるか場外なら回転不可
+          rotateAbleFlag = 0;
+          break;
+        }
+      }
+    }
+    if(rotateAbleFlag == 0){
+      break;
+    }
+  }
+
+  if(rotateAbleFlag == 1){
+    for(int x = 0; x < blockSize; x++){
+      for(int y = 0; y < blockSize; y++){
+        currentShape[x][y] = temp[x][y];
+      }
+    }
   }
 }
 
@@ -346,33 +420,14 @@ void judgeGameOver(){ //ミノが確定したときにミノが配列blockのy=0
 }
 
 void gameOver(){
-  int blockCopy[X][Y];
-  int flag = 0;
-
-  for(int x = 0; x < X; x++){ //blockをコピーしておく
-    for(int y = 2; y < Y; y++){
-      blockCopy[x][y] = block[x][y];
-    }
-  }
-
   while(1){ //チカチカ点滅の無限ループ
-    for(int x = 0; x < X; x++){
-      for(int y = 2; y < Y; y++){
-        if(blockCopy[x][y] == 1 && flag == 0){
-          block[x][y] = 0;
-        }else if(block[x][y] == 1 && flag == 1){
-          block[x][y] = 1;
-        }
-      }
-    }
-    if(flag == 0){
-      flag = 1;
-    }else{
-      flag = 0;
-    }
+    //点灯処理
+    draw(); //ブロックがあるところは光る
+    delay(100);
 
-    draw();
-
+    //消灯処理
+    matrix.clear(); // 内部の描画メモリをクリア
+    matrix.writeDisplay(); //画面を真っ暗にする
     delay(100);
   }
 }

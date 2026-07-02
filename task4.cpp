@@ -36,7 +36,7 @@ int currentShapeType;
 
 struct BlockShape{
   int size; //図形の実際の大きさ 例：Oミノなら2*2で定義できるので2,Tミノには最低2*3必要なので3*3必要として3を入れとく
-  int shape[maxBlockSize][maxBlockSize]
+  int shape[maxBlockSize][maxBlockSize];
 }
 
 BlockShape shapes[3] = {

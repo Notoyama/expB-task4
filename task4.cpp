@@ -37,7 +37,7 @@ int currentShapeType;
 struct BlockShape{
   int size; //図形の実際の大きさ 例：Oミノなら2*2で定義できるので2,Tミノには最低2*3必要なので3*3必要として3を入れとく
   int shape[maxBlockSize][maxBlockSize];
-}
+};
 
 BlockShape shapes[3] = {
   //Oミノ
@@ -358,9 +358,9 @@ void gameOver(){
   while(1){ //チカチカ点滅の無限ループ
     for(int x = 0; x < X; x++){
       for(int y = 2; y < Y; y++){
-        if(blockCopy[x][y] == 1 && flag = 0){
+        if(blockCopy[x][y] == 1 && flag == 0){
           block[x][y] = 0;
-        }else if(block[x][y] == 1 && flag = 1){
+        }else if(block[x][y] == 1 && flag == 1){
           block[x][y] = 1;
         }
       }

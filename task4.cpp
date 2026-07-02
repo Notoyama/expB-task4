@@ -16,10 +16,16 @@
           図形の追加  ok
           ゲームオーバー ok
           図形の回転  maybeok
+          すぐ下におろす △
           表示を増やす2個使いたい
           嘘ブロック（疑心暗鬼要素）次の嘘ブロックは2ライン消すまで出ないとかにしたらバランスいいかも
           */
-
+          
+/*bag     回転させると速く落ちる
+          回転させながら落とすと空中で止まる
+            多分回転前に接地して回転して固定されている
+          */
+          
 // 8x8マトリックス用のオブジェクトを作成
 Adafruit_8x8matrix matrix = Adafruit_8x8matrix();
 
@@ -131,8 +137,8 @@ void setup() {
 }
 
 void loop() {
-  int moveX = 0, stickX = analogRead(A0); //スティックの入力を保存
-  int moveY = 0, stickY = analogRead(A1); //moveX,YはstickX,Yの値を見て実際にどの方向に動かすかを保存
+  int moveX = 0, stickX = analogRead(A0); //スティックの入力を保存 moveX,YはstickX,Yの値を見て実際にどの方向に動かすかを保存
+  int moveY = 0, stickY = 1023 - analogRead(A1); //Yは反転させる
   unsigned long currentMillis = millis();
 
   moveX = wayOfMove(stickX);
@@ -144,12 +150,12 @@ void loop() {
     counter += 1;
     if(counter > 10){  //1秒に一回y方向に1マス落ちる
       counter = 0;
-      moveCurrentBlock(moveX, 1); //y方向にも動かす
+      moveCurrentBlock(moveX, 1); //y方向に自動で動かす(強制)
     }else if(counter % 2 == 0){ //200msに一回x方向に1マス動かせる
-      moveCurrentBlock(moveX, 0); //x方向にのみ動かす
+      moveCurrentBlock(moveX, moveY); //x方向とy軸方向に動かす
     }
 
-    if(moveY == 1){ //100msに1回回転できる
+    if(moveY == -1){ //100msに1回回転できる
       drawCurrentBlock(0);
       rotateBlock();  //回転
       drawCurrentBlock(1);

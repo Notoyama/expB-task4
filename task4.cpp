@@ -18,11 +18,13 @@
           図形の回転  maybeok 上入力しつづけると回り続けるのを解消したい ok
           すぐ下におろす △
           表示を増やす2個使いたい ok
-          嘘ブロック（疑心暗鬼要素）次の嘘ブロックは2ライン消すまで出ないとかにしたらバランスいいかも
+          嘘ブロック（疑心暗鬼要素）ok
+          次の嘘ブロックは2ライン消すまで出ないとかにしたらバランスいいかも
           */
           
 /*bag       回転させながら落とすと空中で止まる
             多分回転前に接地して回転して固定されている
+            嘘ブロックの周り囲いがずれている
           */
           
 // 8x8マトリックス用のオブジェクトを作成
@@ -39,12 +41,13 @@ int currentY = 0;
 int nextFlag = 0; //次のミノを出現させて良いかのフラグ
 int counter = 0; //x座標の移動判定は0.2秒ごとに行われy座標は1秒ごとに行うので数えてタイミングが重なるときにそろえる
 unsigned long previousMillis;
-int fakeFlag = 0; // =0;fakeあり, =1;fakeなし
-
+int countLine = 0;
 
 /*図形の定義*/
-int currentShape[maxBlockSize][maxBlockSize] = {0}; //現在操作しているブロック
-int currentShapeType, nextShapeType;
+int currentShape[maxBlockSize][maxBlockSize] = {0}; //内部で処理されているブロックの形
+int displayShape[maxBlockSize][maxBlockSize] = {0}; //表示されているブロックの形
+int currentShapeType, nextShapeType, displayShapeType;
+int displayShapeSize; // 表示ブロックの描画サイズ
 
 struct BlockShape{
   int size; //図形の実際の大きさ 例：Oミノなら2*2で定義できるので2,Tミノには最低2*3必要なので3*3必要として3を入れとく
@@ -189,11 +192,25 @@ void loop() {
   draw();
 
   if (nextFlag == 1) {
-    drawCurrentBlock(1); // 一旦消したブロックを、最終位置に書き戻し固定する
+    drawCurrentBlock(0);
+
+    displayShapeSize = shapes[currentShapeType].size; //表示と内部のブロックを一致させる
+    for(int x = 0; x < maxBlockSize; x++){
+      for(int y = 0; y < maxBlockSize; y++){
+        displayShape[x][y] = currentShape[x][y];
+      }
+    }
+
+    if(currentShapeType != displayShapeType){ //嘘ブロックだった時
+      fake();
+      countLine = 0;
+    }
+
+    drawCurrentBlock(1); // 一旦消したブロックを最終位置に書き戻し固定
     judgeLine();         // そろったラインを消す
-    judgeGameOver();     // ゲームオーバーの判定
-    newBlock();          // 新しいブロックの座標をセットする
-    nextFlag = 0;        // フラグをリセットして次の落下に備える
+    judgeGameOver();     // ゲームオーバー判定
+    newBlock();          // 新しいブロック作成
+    nextFlag = 0;
   }
 }
 
@@ -232,9 +249,9 @@ void drawCurrentBlock(int mode){  //mode=1:draw mode=0:erase
   int x = 0;
   int y = 0;
   
-  for(x = 0; x < shapes[currentShapeType].size; x++){
-    for(y = 0; y < shapes[currentShapeType].size; y++){ 
-      if(currentShape[x][y] == 1){
+  for(x = 0; x < displayShapeSize; x++){
+    for(y = 0; y < displayShapeSize; y++){ 
+      if(displayShape[x][y] == 1){
         if((currentX + x < X) && (currentY + y < Y)){
           block[currentX + x][currentY + y] = mode;
         }
@@ -319,14 +336,33 @@ void newBlock(){
   
   currentShapeType = blockBag[bagIndex];
   if(bagIndex == 13){
-    bagIndex = 0; // 0に戻す
+    bagIndex = 0; //0に戻す
   }else{
-    bagIndex++; // 次はblockBagの次のブロックを取り出す
+    bagIndex++; //次はblockBagの次のブロックを取り出す
   }
 
   for(int x = 0; x < maxBlockSize; x++){
     for(int y = 0; y < maxBlockSize; y++){
       currentShape[x][y] = shapes[currentShapeType].shape[x][y];  //図形の形をもらってくる
+    }
+  }
+
+  displayShapeType = currentShapeType; //基本は本物と同じ
+  
+  if(countLine >= 2){ //前回嘘ブロックが出現してから2ライン以上消さないと次の嘘ブロックは出ない
+    if(random(100) < 20){ //20%で嘘のブロック 
+      do {
+        displayShapeType = random(7);
+      } while(displayShapeType == currentShapeType); //本物と違う形になるまで引き直す
+    }
+  }
+
+  displayShapeSize = shapes[displayShapeType].size;  //描画サイズを記録しておく
+
+  for(int x = 0; x < maxBlockSize; x++){
+    for(int y = 0; y < maxBlockSize; y++){
+      currentShape[x][y] = shapes[currentShapeType].shape[x][y]; //内部処理用(本物)
+      displayShape[x][y] = shapes[displayShapeType].shape[x][y];    //表示用(嘘のときもある)
     }
   }
 
@@ -346,6 +382,17 @@ void showNext(){
       if(shapes[nextShapeType].shape[x][y] == 1){
         matrixNext.drawPixel(x + 3, y + 3, LED_ON);
       }
+    }
+  }
+
+  if(countLine >= 2){ //噓ブロックが出る可能性がある時は次ブロックの周りが光る
+    for(int x = 1; x <= X; x++){
+      matrixNext.drawPixel(x, 1, LED_ON);
+      matrixNext.drawPixel(x, 8, LED_ON);
+    }
+    for(int y = 2; y <= 7; y++){
+      matrixNext.drawPixel(1, y, LED_ON);
+      matrixNext.drawPixel(8, y, LED_ON);
     }
   }
 
@@ -399,9 +446,26 @@ void rotateBlock(){
   }
 
   if(rotateAbleFlag == 1){
+    //内部処理している本当のブロックを回転
     for(int x = 0; x < blockSize; x++){
       for(int y = 0; y < blockSize; y++){
         currentShape[x][y] = temp[x][y];
+      }
+    }
+
+    int tempDisplay[maxBlockSize][maxBlockSize] = {0};
+    
+    //displayShapeSizeに合わせて90度回転
+    for(int x = 0; x < displayShapeSize; x++){
+      for(int y = 0; y < displayShapeSize; y++){
+        tempDisplay[x][y] = displayShape[y][displayShapeSize - 1 - x];
+      }
+    }
+    
+    //嘘ブロックの配列を新しい向きで上書き
+    for(int x = 0; x < displayShapeSize; x++){
+      for(int y = 0; y < displayShapeSize; y++){
+        displayShape[x][y] = tempDisplay[x][y];
       }
     }
   }
@@ -421,6 +485,7 @@ void judgeLine(){
     }
     if(tetris == 1){
       eraseLine[y] = 1;
+      countLine += 1;
     }else{
       tetris = 1;
     }
@@ -494,6 +559,19 @@ void gameOver(){
     matrixBottom.clear();
     matrixTop.writeDisplay(); //画面を真っ暗にする
     matrixBottom.writeDisplay();
+    delay(100);
+  }
+}
+
+//噓ブロックが接地したときに本来の姿で点滅させる
+void fake(){
+  for(int i = 0; i < 4; i++){
+    drawCurrentBlock(1);
+    draw();
+    delay(100);
+    
+    drawCurrentBlock(0);
+    draw();
     delay(100);
   }
 }

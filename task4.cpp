@@ -3,7 +3,7 @@
 #include <Adafruit_LEDBackpack.h> // HT16K33制御用のライブラリ
 
 #define X 8
-#define Y 10 //2マス余計にとってバッファとする
+#define Y 18 //2マス余計にとってバッファとする
 
 // #define maxBlockX 2
 // #define maXBlockY 2
@@ -15,34 +15,36 @@
 /*todo :  既にあるブロックの角を通る時その角が消えるバグの修正 maybe ok
           図形の追加  ok
           ゲームオーバー ok
-          図形の回転  maybeok
+          図形の回転  maybeok 上入力しつづけると回り続けるのを解消したい ok
           すぐ下におろす △
-          表示を増やす2個使いたい
+          表示を増やす2個使いたい ok
           嘘ブロック（疑心暗鬼要素）次の嘘ブロックは2ライン消すまで出ないとかにしたらバランスいいかも
           */
           
-/*bag     回転させると速く落ちる
-          回転させながら落とすと空中で止まる
+/*bag       回転させながら落とすと空中で止まる
             多分回転前に接地して回転して固定されている
           */
           
 // 8x8マトリックス用のオブジェクトを作成
-Adafruit_8x8matrix matrix = Adafruit_8x8matrix();
+Adafruit_8x8matrix matrixTop = Adafruit_8x8matrix();
+Adafruit_8x8matrix matrixBottom = Adafruit_8x8matrix();
+Adafruit_8x8matrix matrixNext = Adafruit_8x8matrix();
 
 int block[X][Y] = {0};
-int blockBag[7] = {0, 1, 2, 3, 4, 5, 6}; // 7種類のブロックが入った袋
-int bagIndex = 7; // 袋の何番目を取り出すか 最初は空っぽ扱いにするため7
+int blockBag[14] = {0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6}; // 7種類のブロックが入った袋 二周期分
+int bagIndex = 0; // 袋の何番目を取り出すか 最初は空っぽ扱いにするため7
 int eraseLine[Y] = {0}; //消すラインのYを1にする
 int currentX = 3;
 int currentY = 0;
 int nextFlag = 0; //次のミノを出現させて良いかのフラグ
 int counter = 0; //x座標の移動判定は0.2秒ごとに行われy座標は1秒ごとに行うので数えてタイミングが重なるときにそろえる
 unsigned long previousMillis;
+int fakeFlag = 0; // =0;fakeあり, =1;fakeなし
 
 
 /*図形の定義*/
 int currentShape[maxBlockSize][maxBlockSize] = {0}; //現在操作しているブロック
-int currentShapeType;
+int currentShapeType, nextShapeType;
 
 struct BlockShape{
   int size; //図形の実際の大きさ 例：Oミノなら2*2で定義できるので2,Tミノには最低2*3必要なので3*3必要として3を入れとく
@@ -123,15 +125,32 @@ BlockShape shapes[7] = {
 };
 
 void setup() {
-  // HT16K33のI2Cアドレスを指定して通信開始（デフォルトは 0x70 です）
-  matrix.begin(0x70);
+  // HT16K33のI2Cアドレスを指定して通信
+  matrixTop.begin(0x70);
+  matrixBottom.begin(0x71);
+  matrixNext.begin(0x72);
   
-  // 明るさを設定 (0〜15の範囲。最初は控えめに)
-  matrix.setBrightness(5);
+  // 明るさを設定
+  matrixTop.setBrightness(5);
+  matrixBottom.setBrightness(5);
+  matrixNext.setBrightness(5);
 
   previousMillis = millis();
 
   randomSeed(analogRead(A3)); //使ってないアナログピンのノイズを利用して毎回ランダム値を変化させるらしい
+
+  for(int i = 0; i < 7; i++){ // ランダムな場所を選んで中身を入れ替えるのを7回やる 前半7つ
+      int r = random(7);
+      int temp = blockBag[i];
+      blockBag[i] = blockBag[r];
+      blockBag[r] = temp;
+    }
+  for(int i = 7; i < 14; i++){ // ランダムな場所を選んで中身を入れ替えるのを7回やる 後半7つ
+    int r = random(7, 14);
+    int temp = blockBag[i];
+    blockBag[i] = blockBag[r];
+    blockBag[r] = temp;
+  }
 
   newBlock(); //最初のブロック生成
 }
@@ -139,12 +158,20 @@ void setup() {
 void loop() {
   int moveX = 0, stickX = analogRead(A0); //スティックの入力を保存 moveX,YはstickX,Yの値を見て実際にどの方向に動かすかを保存
   int moveY = 0, stickY = 1023 - analogRead(A1); //Yは反転させる
+  static int preMoveY = 0; //スティック倒しっぱなしで回転し続けるのを防ぐために前の状態を記録
   unsigned long currentMillis = millis();
 
   moveX = wayOfMove(stickX);
   moveY = wayOfMove(stickY);
   
   drawCurrentBlock(0);
+
+  if(moveY == -1 && preMoveY != -1){ //回転
+    drawCurrentBlock(0);
+    rotateBlock();  //回転
+    drawCurrentBlock(1);
+  }
+  preMoveY = moveY;
   
   if(currentMillis - previousMillis >= 100){
     counter += 1;
@@ -153,12 +180,6 @@ void loop() {
       moveCurrentBlock(moveX, 1); //y方向に自動で動かす(強制)
     }else if(counter % 2 == 0){ //200msに一回x方向に1マス動かせる
       moveCurrentBlock(moveX, moveY); //x方向とy軸方向に動かす
-    }
-
-    if(moveY == -1){ //100msに1回回転できる
-      drawCurrentBlock(0);
-      rotateBlock();  //回転
-      drawCurrentBlock(1);
     }
     previousMillis = currentMillis;
   }
@@ -178,9 +199,13 @@ void loop() {
 
 //描画関数3点セット
 void draw(){
-  matrix.clear(); // 内部の描画メモリをクリア
+  matrixTop.clear(); // 内部の描画メモリをクリア
+  matrixBottom.clear();
+
   drawPixel();
-  matrix.writeDisplay();  
+
+  matrixTop.writeDisplay();
+  matrixBottom.writeDisplay();  
 }
 
 /*block配列中のブロックがある場所を光らせるように書き込む*/
@@ -191,7 +216,12 @@ void drawPixel(){
   for(x = 0; x < X; x++){
     for(y = 2; y < Y; y++){ //バッファ分ずれている
       if(block[x][y] == 1){
-        matrix.drawPixel(x, y - 2, LED_ON);
+        int displayY = y - 2; //バッファ分を引いたY座標
+        if (displayY < 8) { //上下に分ける
+          matrixTop.drawPixel(x, displayY, LED_ON);
+        } else {
+          matrixBottom.drawPixel(x, displayY - 8, LED_ON); //下のパネルは8を引いて合わせる
+        }
       }
     }
   }
@@ -217,7 +247,7 @@ void drawCurrentBlock(int mode){  //mode=1:draw mode=0:erase
 void moveCurrentBlock(int moveX, int timeFlagY){ //moveX:x方向の動き timeFlagY:y方向に動かすかどうか
   if(timeFlagY == 0){ //x方向にのみ動かすとき
     moveCurrentBlockX(moveX);
-  }else{
+  }else if(timeFlagY == 1){
     moveCurrentBlockY(moveCurrentBlockX(moveX), moveX);
   }
 }
@@ -271,18 +301,28 @@ void moveCurrentBlockY(int moveAbleFlagX, int moveX){
 
 /*中央上に新しいブロックを生成する*/
 void newBlock(){
-  if(bagIndex >= 7){
-    for(int i = 0; i < 7; i++){ // ランダムな場所を選んで中身を入れ替えるのを7回やる
+  if(bagIndex == 7){  //前半をシャッフル
+    for(int i = 0; i < 7; i++){ // ランダムな場所を選んで中身を入れ替えるのを7回やる 前半7つ
       int r = random(7);
       int temp = blockBag[i];
       blockBag[i] = blockBag[r];
       blockBag[r] = temp;
     }
-    bagIndex = 0; // 0に戻す
+  }else if(bagIndex == 0){ 
+    for(int i = 7; i < 14; i++){ // ランダムな場所を選んで中身を入れ替えるのを7回やる 後半7つ
+      int r = random(7, 14);
+      int temp = blockBag[i];
+      blockBag[i] = blockBag[r];
+      blockBag[r] = temp;
+    }
   }
-
+  
   currentShapeType = blockBag[bagIndex];
-  bagIndex++; // 次はblockBagの次のブロックを取り出す
+  if(bagIndex == 13){
+    bagIndex = 0; // 0に戻す
+  }else{
+    bagIndex++; // 次はblockBagの次のブロックを取り出す
+  }
 
   for(int x = 0; x < maxBlockSize; x++){
     for(int y = 0; y < maxBlockSize; y++){
@@ -292,6 +332,24 @@ void newBlock(){
 
   currentX = 3;
   currentY = 0;
+
+  showNext();
+}
+
+void showNext(){
+  matrixNext.clear();
+
+  nextShapeType = blockBag[bagIndex];
+
+  for(int x = 0; x < maxBlockSize; x++){
+    for(int y = 0; y < maxBlockSize; y++){
+      if(shapes[nextShapeType].shape[x][y] == 1){
+        matrixNext.drawPixel(x + 3, y + 3, LED_ON);
+      }
+    }
+  }
+
+  matrixNext.writeDisplay();
 }
 
 /*左右どちらに動かすか決定する*/
@@ -432,8 +490,10 @@ void gameOver(){
     delay(100);
 
     //消灯処理
-    matrix.clear(); // 内部の描画メモリをクリア
-    matrix.writeDisplay(); //画面を真っ暗にする
+    matrixTop.clear(); // 内部の描画メモリをクリア
+    matrixBottom.clear();
+    matrixTop.writeDisplay(); //画面を真っ暗にする
+    matrixBottom.writeDisplay();
     delay(100);
   }
 }

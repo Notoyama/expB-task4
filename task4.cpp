@@ -42,11 +42,13 @@ int nextFlag = 0; //次のミノを出現させて良いかのフラグ
 int counter = 0; //x座標の移動判定は0.2秒ごとに行われy座標は1秒ごとに行うので数えてタイミングが重なるときにそろえる
 unsigned long previousMillis;
 int countLine = 0;
+int isCurrentFake = 0, isNextFake = 0;
+int fakeFlag = 0; //複数の噓ブロックが同時に出現するのを避けるため
 
 /*図形の定義*/
 int currentShape[maxBlockSize][maxBlockSize] = {0}; //内部で処理されているブロックの形
 int displayShape[maxBlockSize][maxBlockSize] = {0}; //表示されているブロックの形
-int currentShapeType, nextShapeType, displayShapeType;
+int currentShapeType, nextShapeType, displayShapeType, nextDisplayShapeType;
 int displayShapeSize; // 表示ブロックの描画サイズ
 
 struct BlockShape{
@@ -155,6 +157,8 @@ void setup() {
     blockBag[r] = temp;
   }
 
+  nextShapeType = blockBag[bagIndex]; //2番目のブロックを用意しておく
+  nextDisplayShapeType = nextShapeType;
   newBlock(); //最初のブロック生成
 }
 
@@ -201,9 +205,10 @@ void loop() {
       }
     }
 
-    if(currentShapeType != displayShapeType){ //嘘ブロックだった時
+    if(isCurrentFake == 1){ //嘘ブロックだった時
       fake();
       countLine = 0;
+      fakeFlag = 0;
     }
 
     drawCurrentBlock(1); // 一旦消したブロックを最終位置に書き戻し固定
@@ -318,56 +323,55 @@ void moveCurrentBlockY(int moveAbleFlagX, int moveX){
 
 /*中央上に新しいブロックを生成する*/
 void newBlock(){
-  if(bagIndex == 7){  //前半をシャッフル
-    for(int i = 0; i < 7; i++){ // ランダムな場所を選んで中身を入れ替えるのを7回やる 前半7つ
+  currentShapeType = nextShapeType;
+  displayShapeType = nextDisplayShapeType;
+  isCurrentFake = isNextFake;
+  displayShapeSize = shapes[displayShapeType].size;
+
+  for(int x = 0; x < maxBlockSize; x++){ //現在の形をとってくる
+    for(int y = 0; y < maxBlockSize; y++){
+      currentShape[x][y] = shapes[currentShapeType].shape[x][y]; 
+      displayShape[x][y] = shapes[displayShapeType].shape[x][y];    
+    }
+  }
+
+  currentX = 3; //初期位置設定
+  currentY = 0;
+
+  int nextIndex = (bagIndex + 1) % 14;
+  
+  if (nextIndex == 7) {
+    for(int i = 0; i < 7; i++){ //前半部分のシャッフル
       int r = random(7);
       int temp = blockBag[i];
       blockBag[i] = blockBag[r];
       blockBag[r] = temp;
     }
-  }else if(bagIndex == 0){ 
-    for(int i = 7; i < 14; i++){ // ランダムな場所を選んで中身を入れ替えるのを7回やる 後半7つ
-      int r = random(7, 14);
+  } else if (nextIndex == 0) {
+    for(int i = 7; i < 14; i++){ //後半部分のシャッフル
+      int r = random(7, 14); 
       int temp = blockBag[i];
       blockBag[i] = blockBag[r];
       blockBag[r] = temp;
     }
   }
   
-  currentShapeType = blockBag[bagIndex];
-  if(bagIndex == 13){
-    bagIndex = 0; //0に戻す
-  }else{
-    bagIndex++; //次はblockBagの次のブロックを取り出す
-  }
+  bagIndex = nextIndex;
 
-  for(int x = 0; x < maxBlockSize; x++){
-    for(int y = 0; y < maxBlockSize; y++){
-      currentShape[x][y] = shapes[currentShapeType].shape[x][y];  //図形の形をもらってくる
-    }
-  }
-
-  displayShapeType = currentShapeType; //基本は本物と同じ
+  nextShapeType = blockBag[bagIndex]; //次のブロックを決定
+  nextDisplayShapeType = nextShapeType; //基本は本物
+  isNextFake = 0;
   
-  if(countLine >= 2){ //前回嘘ブロックが出現してから2ライン以上消さないと次の嘘ブロックは出ない
-    if(random(100) < 20){ //20%で嘘のブロック 
+  if(countLine >= 2 && fakeFlag == 0){ //前回の嘘ブロックから2ライン以上消していてまだ嘘ブロック出していない
+    // if(random(100) < 50){ //50%で嘘ブロック化
+    if(1){//実験用
+      isNextFake = 1; //嘘フラグを立てる
+      fakeFlag = 1;
       do {
-        displayShapeType = random(7);
-      } while(displayShapeType == currentShapeType); //本物と違う形になるまで引き直す
+        nextDisplayShapeType = random(7);
+      } while(nextDisplayShapeType == nextShapeType); //違う形になるまで繰り返す 
     }
   }
-
-  displayShapeSize = shapes[displayShapeType].size;  //描画サイズを記録しておく
-
-  for(int x = 0; x < maxBlockSize; x++){
-    for(int y = 0; y < maxBlockSize; y++){
-      currentShape[x][y] = shapes[currentShapeType].shape[x][y]; //内部処理用(本物)
-      displayShape[x][y] = shapes[displayShapeType].shape[x][y];    //表示用(嘘のときもある)
-    }
-  }
-
-  currentX = 3;
-  currentY = 0;
 
   showNext();
 }
@@ -375,24 +379,22 @@ void newBlock(){
 void showNext(){
   matrixNext.clear();
 
-  nextShapeType = blockBag[bagIndex];
-
   for(int x = 0; x < maxBlockSize; x++){
     for(int y = 0; y < maxBlockSize; y++){
-      if(shapes[nextShapeType].shape[x][y] == 1){
-        matrixNext.drawPixel(x + 3, y + 3, LED_ON);
+      if(shapes[nextDisplayShapeType].shape[x][y] == 1){
+        matrixNext.drawPixel(x + 2, y + 2, LED_ON);
       }
     }
   }
 
   if(countLine >= 2){ //噓ブロックが出る可能性がある時は次ブロックの周りが光る
-    for(int x = 1; x <= X; x++){
-      matrixNext.drawPixel(x, 1, LED_ON);
-      matrixNext.drawPixel(x, 8, LED_ON);
+    for(int x = 0; x < X; x++){
+      matrixNext.drawPixel(x, 0, LED_ON);
+      matrixNext.drawPixel(x, 7, LED_ON);
     }
-    for(int y = 2; y <= 7; y++){
-      matrixNext.drawPixel(1, y, LED_ON);
-      matrixNext.drawPixel(8, y, LED_ON);
+    for(int y = 1; y < 7; y++){
+      matrixNext.drawPixel(0, y, LED_ON);
+      matrixNext.drawPixel(7, y, LED_ON);
     }
   }
 
@@ -565,7 +567,7 @@ void gameOver(){
 
 //噓ブロックが接地したときに本来の姿で点滅させる
 void fake(){
-  for(int i = 0; i < 4; i++){
+  for(int i = 0; i < 8; i++){
     drawCurrentBlock(1);
     draw();
     delay(100);

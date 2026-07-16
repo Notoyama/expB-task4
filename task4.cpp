@@ -1,12 +1,18 @@
-#include <Wire.h> // I2C通信用の標準ライブラリ
-#include <Adafruit_GFX.h> // 図形描画用のライブラリ
-#include <Adafruit_LEDBackpack.h> // HT16K33制御用のライブラリ
+#include <Wire.h> //I2C通信用の標準ライブラリ
+#include <Adafruit_GFX.h> //図形描画用のライブラリ
+#include <Adafruit_LEDBackpack.h> //HT16K33制御用のライブラリ
+#include <TM1637.h> //7セグメントLED用ライブラリ
+
 
 #define X 8
 #define Y 18 //2マス余計にとってバッファとする
 
 // #define maxBlockX 2
 // #define maXBlockY 2
+
+#define CLK_PIN 2
+#define DIO_PIN 3
+TM1637 scoreDisplay(CLK_PIN, DIO_PIN);
 
 #define maxBlockSize 4
 
@@ -44,6 +50,7 @@ unsigned long previousMillis;
 int countLine = 0;
 int isCurrentFake = 0, isNextFake = 0;
 int fakeFlag = 0; //複数の噓ブロックが同時に出現するのを避けるため
+int totalLine = 0;
 
 /*図形の定義*/
 int currentShape[maxBlockSize][maxBlockSize] = {0}; //内部で処理されているブロックの形
@@ -139,6 +146,11 @@ void setup() {
   matrixTop.setBrightness(5);
   matrixBottom.setBrightness(5);
   matrixNext.setBrightness(5);
+
+  //ライン数を表示
+  scoreDisplay.init();
+  scoreDisplay.set(BRIGHT_TYPICAL); // 輝度を標準に設定 (0〜7で調節可能)
+  updateScoreDisplay(); // 最初期のスコア「0000」を表示する
 
   previousMillis = millis();
 
@@ -253,6 +265,9 @@ void drawPixel(){
 void drawCurrentBlock(int mode){  //mode=1:draw mode=0:erase
   int x = 0;
   int y = 0;
+
+  
+
   
   for(x = 0; x < displayShapeSize; x++){
     for(y = 0; y < displayShapeSize; y++){ 
@@ -363,8 +378,8 @@ void newBlock(){
   isNextFake = 0;
   
   if(countLine >= 2 && fakeFlag == 0){ //前回の嘘ブロックから2ライン以上消していてまだ嘘ブロック出していない
-    // if(random(100) < 50){ //50%で嘘ブロック化
-    if(1){//実験用
+    if(random(100) < 50){ //50%で嘘ブロック化
+    // if(1){//実験用
       isNextFake = 1; //嘘フラグを立てる
       fakeFlag = 1;
       do {
@@ -488,10 +503,13 @@ void judgeLine(){
     if(tetris == 1){
       eraseLine[y] = 1;
       countLine += 1;
+      totalLine += 1;
     }else{
       tetris = 1;
     }
   }
+
+  updateScoreDisplay(); //スコアが変化したらLEDを更新
 
   eraseEffect();
 
@@ -502,6 +520,13 @@ void judgeLine(){
   }
 
   draw();
+}
+
+void updateScoreDisplay() {
+  scoreDisplay.display(3, totalLine % 10);          // 1の位 (一番右)
+  scoreDisplay.display(2, (totalLine / 10) % 10);     // 10の位
+  scoreDisplay.display(1, (totalLine / 100) % 10);    // 100の位
+  scoreDisplay.display(0, (totalLine / 1000) % 10);   // 1000の位 (一番左)
 }
 
 //消えるラインを消して1段ずらす
@@ -545,7 +570,6 @@ void judgeGameOver(){ //ミノが確定したときにミノが配列blockのy=0
     if(block[x][1] == 1){
       gameOver();
       break;
-      //この後どうしよう
     }
   }
 }
